@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>D3 US Map with Interactive Audio</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background-color: #1f1f1f;}
+
+    #map { width: 100%; height: 100vh; }
+
+    .tooltip {
+      position: absolute;
+      background: #fff8e7;
+      border: 2px solid #b8860b;
+      color: #1f1f1f;
+      padding: 12px;
+      border-radius: 6px;
+      pointer-events: auto;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      width: 250px;
+      max-width: 250px;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .tooltip img {
+      width: 100%;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    .tooltip button {
+      margin-top: 6px;
+      margin-right: 4px;
+      padding: 6px 10px;
+      border: none;
+      background: #007BFF;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* City Label Group (Hidden by default) */
+    .city-label-group {
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease-in-out;
+    }
+
+    /* White Background Pill for City Label */
+    .city-label-bg {
+      fill: #ffffff;
+      fill-opacity: 0.9;
+      stroke: #d0d0d0;
+      stroke-width: 0.5px;
+      rx: 3px;
+      ry: 3px;
+      filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.15));
+    }
+
+    /* City Label Text: Slightly smaller and positioned to the right */
+    .city-label-text {
+      font-size: 9px;
+      font-weight: 600;
+      fill: #111111;
+      font-family: Arial, sans-serif;
+    }
+
+    #titleOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.85);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: 9999;
+      text-align: center;
+    }
+
+    #titleOverlay h1 {
+      font-size: 3em;
+      margin-bottom: 10px;
+    }
+
+    #titleOverlay button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      background: #000000;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #toggleTitle {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 10000;
+      padding: 6px 10px;
+      background: #000000;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div id="titleOverlay">
+  <h1>Onyx Voices Rising: </h1>
+  <h2>Black Women, Music, and the Geography of Identity</h2>
+   <img src="base.jpg" width="300" alt="Base">
+  <p>Exploring the intersection of identity and place, Onyx Voices Rising centers Black women music artists across genres, eras, and geographic locations. You experience artists whose contributions shaped the American soundtrack, allowing to interact with map-based icons that reveal images, brief narratives, artistic influences, and curated resources. Through a digital scope, you learn the significance of Black women’s musical legacies while emphasizing how location and lived experience inform creativity and cultural impact.</p>
+ 
+  <button onclick="toggleTitle(false)">Enter Map</button>
+</div>
+
+<button id="toggleTitle" onclick="toggleTitle(true)">Show Title</button>
+
+<div id="map"></div>
+
+<script>
+const width = window.innerWidth;
+const height = window.innerHeight;
+
+const svg = d3.select("#map")
+  .append("svg")
+  .attr("width", width)
+  .attr("height", height);
+
+const projection = d3.geoAlbersUsa()
+  .translate([width / 2, height / 2])
+  .scale(1200);
+
+const path = d3.geoPath().projection(projection);
+
+const tooltip = d3.select("body")
+  .append("div")
+  .attr("class", "tooltip")
+  .style("opacity", 0);
+
+let audioPlayer = new Audio();
+let activeArtist = null;
+
+function playAudio(src) {
+  audioPlayer.pause();
+  audioPlayer = new Audio(src);
+  audioPlayer.play();
+}
+
+function pauseAudio() {
+  audioPlayer.pause();
+}
+
+function stopAudio() {
+  audioPlayer.pause();
+  audioPlayer.currentTime = 0;
+}
+
+function toggleTitle(show) {
+  document.getElementById("titleOverlay").style.display = show ? "flex" : "none";
+}
+
+const cities = [
+  { "name": "Anchorage", "coords": [-149.9003, 61.2181] },
+  { "name": "Tuscaloosa", "coords": [-87.5692, 33.2098] },
+  { "name": "Athens", "coords": [-86.9717, 34.8029] },
+  { "name": "Birmingham", "coords": [-86.8104, 33.5186] },
+  { "name": "Montgomery", "coords": [-86.3077, 32.3792] },
+  { "name": "Phoenix", "coords": [-112.074, 33.4484] },
+  { "name": "Cotton Plant", "coords": [-91.2487, 35.0051] },
+  { "name": "Little Rock", "coords": [-92.2896, 34.7465] },
+  { "name": "Los Angeles", "coords": [-118.2437, 34.0522] },
+  { "name": "Oakland", "coords": [-122.2712, 37.8044] },
+  { "name": "Tarzana/Los Angeles", "coords": [-118.5376, 34.1706] },
+  { "name": "Carson", "coords": [-118.282, 33.8317] },
+  { "name": "Compton", "coords": [-118.2201, 33.8958] },
+  { "name": "Sacramento", "coords": [-121.4944, 38.5816] },
+  { "name": "Denver", "coords": [-104.9903, 39.7392] },
+  { "name": "Tampa", "coords": [-82.4572, 27.9506] },
+  { "name": "Miami", "coords": [-80.1918, 25.7617] },
+  { "name": "Columbus", "coords": [-84.9877, 32.461] },
+  { "name": "Atlanta", "coords": [-84.388, 33.749] },
+  { "name": "Chicago", "coords": [-87.6298, 41.8781] },
+  { "name": "Gary", "coords": [-87.3464, 41.5934] },
+  { "name": "Waterloo", "coords": [-92.3426, 42.4928] },
+  { "name": "Kansas City", "coords": [-94.6275, 39.1141] },
+  { "name": "Louisville", "coords": [-85.7585, 38.2527] },
+  { "name": "Ponchatoula", "coords": [-90.4409, 30.4396] },
+  { "name": "New Orleans", "coords": [-90.0715, 29.9511] },
+  { "name": "Baltimore", "coords": [-76.6122, 39.2904] },
+  { "name": "Severn", "coords": [-76.6975, 39.1318] },
+  { "name": "Boston", "coords": [-71.0589, 42.3601] },
+  { "name": "Detroit", "coords": [-83.0458, 42.3314] },
+  { "name": "Jackson", "coords": [-90.1848, 32.2988] },
+  { "name": "Sidon (LeFlore County)", "coords": [-90.2081, 33.4057] },
+  { "name": "Laurel", "coords": [-89.1306, 31.6941] },
+  { "name": "St. Louis", "coords": [-90.1994, 38.627] },
+  { "name": "Las Vegas", "coords": [-115.1398, 36.1716] },
+  { "name": "Dover", "coords": [-70.8737, 43.1979] },
+  { "name": "Maplewood", "coords": [-74.2732, 40.7312] },
+  { "name": "South Orange", "coords": [-74.2613, 40.7487] },
+  { "name": "Newark", "coords": [-74.1724, 40.7357] },
+  { "name": "Harlem", "coords": [-73.9465, 40.8116] },
+  { "name": "Bedford-Stuyvesant", "coords": [-73.9414, 40.6836] },
+  { "name": "Long Island", "coords": [-73.135, 40.7891] },
+  { "name": "Bronx/Yonkers", "coords": [-73.8648, 40.8448] },
+  { "name": "Washington Heights/Manhattan", "coords": [-73.9394, 40.8416] },
+  { "name": "Tryon", "coords": [-82.2343, 35.2087] },
+  { "name": "Snow Hill", "coords": [-77.6741, 35.4538] },
+  { "name": "Black Mountain", "coords": [-82.3212, 35.6179] },
+  { "name": "Greensboro", "coords": [-79.792, 36.0726] },
+  { "name": "Chapel Hill", "coords": [-79.0558, 35.9132] },
+  { "name": "Durham", "coords": [-78.8986, 35.994] },
+  { "name": "Cleveland", "coords": [-81.6944, 41.4993] },
+  { "name": "Chillicothe/Columbus", "coords": [-82.9824, 39.3331] },
+  { "name": "Cincinnati", "coords": [-84.512, 39.1031] },
+  { "name": "Toledo", "coords": [-83.5379, 41.6528] },
+  { "name": "Philadelphia", "coords": [-75.1652, 39.9526] },
+  { "name": "Pittsburgh", "coords": [-79.9959, 40.4406] },
+  { "name": "Providence", "coords": [-71.4128, 41.824] },
+  { "name": "Leesville", "coords": [-81.5151, 33.9213] },
+  { "name": "Columbia", "coords": [-81.0348, 34.0007] },
+  { "name": "Chattanooga", "coords": [-85.3097, 35.0456] },
+  { "name": "North", "coords": [-81.1018, 33.6163] },
+  { "name": "Memphis", "coords": [-90.049, 35.1495] },
+  { "name": "Nashville", "coords": [-86.7816, 36.1627] },
+  { "name": "Houston", "coords": [-95.3698, 29.7604] },
+  { "name": "Dallas", "coords": [-96.797, 32.7767] },
+  { "name": "Arlington", "coords": [-97.1081, 32.7357] },
+  { "name": "Newport News", "coords": [-76.473, 37.0871] },
+  { "name": "Portsmouth", "coords": [-76.2983, 36.8354] },
+  { "name": "Yakima", "coords": [-120.5059, 46.6021] },
+  { "name": "Bluefield", "coords": [-81.2223, 37.2698] },
+  { "name": "Milwaukee", "coords": [-87.9065, 43.0389] },
+  { "name": "Star Valley", "coords": [-111.0003, 42.9052] }
+];
+
+const points = [
+  {
+    "name": "Reyna Roberts",
+    "location": "",
+    "coords": [-149.9003, 61.2181],
+    "info": "Roberts (1997-) is an American singer, and pianist who moved to Nashville to pursue country music. She went to summer camps to learn the craft followed by performing at different music showcases in the city from 2018-2021. She was featured on Beyonce's cover of the Beatles' song \"Blackbird\" from the album Cowboy Carter. ",
+    "img": "reyna roberts.jpg",
+    "audio": "one",
+    "photo_credit": "© Daniel DeSlover/ZUMA Press Wire"
+  },
+  {
+    "name": "Dinah Washington",
+    "location": "",
+    "coords": [-87.5692, 33.2098],
+    "info": "Washington (1924-1963) was an American singer and pianist. Even though she grew up in Chicago, she spent her early years in Tuscaloosa. Spending a lot of time in both the church and night clubs, her big break came when she sang with a band led by musician Lionel Hampton. During the 1940s and 1950s, she recorded 27 R&B top 10 hits and scored her first top ten in 1959 with the song called, \"What a Diff'rence a Day Makes\" peaking on the chart at number 4. She was famously known to sing music genres such as dirty blues and torch songs.",
+    "img": "default.jpg",
+    "audio": "Dinah Washington- What A Difference A Day Makes (1959).mp3",
+    "photo_credit": "© Historic Collection at Alamy"
+  },
+  {
+    "name": "Brittany Howard",
+    "location": "",
+    "coords": [-86.9717, 34.8029],
+    "info": "Howard (b.1998) is an American musician, songwriter, and guitarist who is the lead vocalist for the band Alabama Shakes. In 2018, she took a hiatus from the band to pursue music as a solo artist. She has won Grammy Awards as part of the Alabama Shakes as well by herself. Her debut album, Jaime, released in 2019, was well-received by music critics. ",
+    "img": "brittany howard.jpg",
+    "audio": "two",
+    "photo_credit": "© Ian West/PA Images"
+  },
+  {
+    "name": "Odetta",
+    "location": "",
+    "coords": [-86.8104, 33.5186],
+    "info": "Odetta Holmes (1930-2008), known as \"The Voice of the Civil Rights Movement,\" was an American singer who performed a range of music genres including folk music, blues, jazz, and spirituals. She perfomed at the March on Washington for Freedom and Jobs in 1963 singing \"O Freedom.\" ",
+    "img": "odetta.jpg",
+    "audio": "three",
+    "photo_credit": "© Pictorial Press/Alamy"
+  },
+  {
+    "name": "Big Mama Thorton",
+    "location": "",
+    "coords": [-86.3077, 32.3792],
+    "info": "Born Willie Mae Thorton (1926-1984), she was a singer and songwriter in blues and R&B music. The first to record, \"Hound Dog\" (1952) and \"Ball and Chain (,\" Thornton was one of the few Black women who was  instrumental in the origins of rock-n-roll music. ",
+    "img": "four.jpg",
+    "audio": "four",
+    "photo_credit": "© Pictorial Press/Alamy"
+  },
+  {
+    "name": "CeCe Peniston",
+    "location": "",
+    "coords": [-112.074, 33.4484],
+    "info": "Born in 1969, Peniston grew up performing in the church and at school in the city. At the age 21, she made her mark in the industry with a Top Five dance hit \"Finally\" (1991) on the  Billboard US Hot 100.",
+    "img": "cece peniston.jpg",
+    "audio": "five",
+    "photo_credit": "© Kevin Winter/Getty Images"
+  },
+  {
+    "name": "Sister Rosetta Tharpe",
+    "location": "",
+    "coords": [-91.2487, 35.0051],
+    "info": "Called \"The Godmother of Rock & Roll,\" Tharpe (1915-1973) was a singer, songwriter, and legendary guitarist who was one of the few gospel artists to attract R&B and rock-n-roll audiences. Her guitar technique was a masterclass that inspired future musicians like Chuck Berry and Keith Richards.  ",
+    "img": "sister rosetta tharpe.jpg",
+    "audio": "six",
+    "photo_credit": "© Archive Photos/Getty Images"
+  },
+  {
+    "name": "Florence Price (need an image) asked AR special collection; waiting on a response",
+    "location": "",
+    "coords": [-92.2896, 34.7465],
+    "info": "Price (1887-1953) was a classical composer, pianist, organist, and music teacher who is recognized as the first Black woman symphonic composer and a composition played by a major orchestra. ",
+    "img": "default.jpg",
+    "audio": "Price_ Symphony No. 1 in E Minor_ III. Juba Dance. Allegro.mp3",
+    "photo_credit": "© Special Collections, University of Arkansas Libraries, Fayetteville"
+  },
+  {
+    "name": "Rihanna*",
+    "location": "",
+    "coords": [-118.2437, 34.0522],
+    "info": "Born on the island of Barbados in 1988, Robyn Rihanna Fenty has captivated music audiences since 2005. With 8 successful albums under her belt, she has scored a truckload of top ten Billboard Hot 100 hits as both a solo and featured artist such as \"SOS\" (2006), \"Love the Way You Lie\" (2010) and \"Work\" (2016). ",
+    "img": "rihanna.jpg",
+    "audio": "Rihanna - Umbrella (Orange Version) (Official Music Video) ft. JAY-Z.mp3",
+    "photo_credit": "© Emma McIntyre/Getty Images"
+  },
+  {
+    "name": "Pointer Sisters",
+    "location": "",
+    "coords": [-122.2712, 37.8044],
+    "info": "An American R&B pop vocal group (Ruth, Anita, June, Bonnie) who had 13 Top 20 Billboard between 1973-1987 which includes \"Yes We Can Can\" and \"Jump (For My Love).\" They had the distinct honor as being the first Black group to performed at the Grand Ole Opry.    ",
+    "img": "pointer sisters.jpg",
+    "audio": "I'm So Excited (Extended Version).mp3",
+    "photo_credit": "© Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "Doja Cat",
+    "location": "",
+    "coords": [-118.5376, 34.1706],
+    "info": "Amala Ratna Zandile Dlamini (b. 1995) is a singer, rapper, and songwriter who honed her performing skills by taking singing and dancing lessons. She broke through musically by the way of internet culture (YouTube, Myspace, GarageBand). Her music blends pop rap, hip-hop, and R&B, but she has also expresses herself through visual arts. ",
+    "img": "doja cat.jpg",
+    "audio": "Doja Cat - Paint The Town Red (Official Video).mp3",
+    "photo_credit": "© Kevin Mazur/Getty Images"
+  },
+  {
+    "name": "Brandy",
+    "location": "",
+    "coords": [-118.282, 33.8317],
+    "info": "Brandy Norwood (b. 1979) is an American singer, songwriter, and actress who rose to fame as a teenager by recording her debut self-titled album in 1994. In addition to her musical attributes, she starred in the title role of the hit TV show, Moesha (1996-2001). ",
+    "img": "brandy.jpg",
+    "audio": "Brandy - I Wanna Be Down (LP Version).mp3",
+    "photo_credit": "© Steve Granitz/WireImage via Getty Images"
+  },
+  {
+    "name": "Yo Yo",
+    "location": "",
+    "coords": [-118.2201, 33.8958],
+    "info": "A protégée of another Compton native Ice Cube, Yolanda Whitaker (b. 1971) is an American rapper and actress that rose to fame with her debut single, \"You Can't Play with My Yo-Yo\" in 1991 where she advocates for female empowerment in her music. She created the Intelligent Black Woman's Coalition (IBWC) to stand up for Black women’s rights.",
+    "img": "yo yo.jpg",
+    "audio": "You Can't Play with My Yo-Yo (feat. Ice Cube).mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Victoria  Monét",
+    "location": "",
+    "coords": [-121.4944, 38.5816],
+    "info": " Monét (b. 1989) is a singer, songwriter, and dancer who compose songs for other artists like Ariana Grande before making a mark for herself with the hit single, \"On My Mama\" (2023) and won a Grammy for Best New Artist in 2024. ",
+    "img": "victoria monet.jpg",
+    "audio": "Victoria Monét - On My Mama (97.1 AMP Radio).mp3",
+    "photo_credit": "© Johnny Nunez/WireImage via Getty Images"
+  },
+  {
+    "name": "India.Arie",
+    "location": "",
+    "coords": [-104.9903, 39.7392],
+    "info": "India Arie Simpson (b.1975) is a singer, songwriter, and guitarist who has been known for incorporating advocacy of positive representation as well as self-acceptance, race, and cultural identity in her music. Her debut album, Acoustic Soul (2001) was met with commercial and critical success. She has released 6 albums since then. ",
+    "img": "india arie.jpg",
+    "audio": "India.Arie - Video.mp3",
+    "photo_credit": "© Frank Micelotta/ImageDirect via Getty Images"
+  },
+  {
+    "name": "Dianne Reeves",
+    "location": "",
+    "coords": [-104.9903, 39.7392],
+    "info": "Reeves (b. 1956) is a 5x Grammy Award-winning jazz singer who starting performing at an early age and attended the University of Colorado majoring in classical voice. After stints in Los Angeles and New York City, she recorded her debut album where she worked with artists such as Herbie Hancock. ",
+    "img": "dianne reeves.jpg",
+    "audio": "Better Days.mp3",
+    "photo_credit": "© Roberto Serra/Iguana Press/Getty Images"
+  },
+  {
+    "name": "Doechii",
+    "location": "",
+    "coords": [-82.4572, 27.9506],
+    "info": "Jaylah Ji'mya Hickmon (b. 1998) is a singer, songwriter, rapper, actress who hone her skills as a performer at a young age making music while in high school. Also known as the \"Swamp Princess,\" she became the second female rapper to win a Grammy Award for Best Rap Album (2024) for Alligator Bites Never Heal",
+    "img": "doechii.jpg",
+    "audio": "Doechii - Denial Is A River Show.mp3",
+    "photo_credit": "© Rich Polk/Variety via Getty Images"
+  },
+  {
+    "name": "Trina",
+    "location": "",
+    "coords": [-80.1918, 25.7617],
+    "info": "Katrina Laverne Taylor (b. 1978) is an American rapper who began her career in the early 2000s with hits such as \"Da Baddest Bitch\" (1999) and \"Pull Over\" (2000). While she was studying to earn her real estate license, her lyricism caught the attention of fellow Miami rapper Trick Daddy and put her on his Top 3 Billboard rap hit, \"Nann N***a\" in 1998. This collaboration lead Trina in signing a record deal with Atlantic Records.",
+    "img": "trina.jpg",
+    "audio": "Trina - Pull Over (Album Version) [Explicit Version].mp3",
+    "photo_credit": "© Johnny Nunez/WireImage via Getty Images"
+  },
+  {
+    "name": "Betty Wright",
+    "location": "",
+    "coords": [-80.1918, 25.7617],
+    "info": "Bessie Regina Norris (1953-2020) was an American singer, songwriter, and a backup vocalist. She started in a gospel group with her sisters, but transitioned into R&B after leaving the group at a very young age. She recorded hit R&B songs such as \"Clean Up Woman,\" and \"No Pain.\" ",
+    "img": "betty wright.jpg",
+    "audio": "two.mp3",
+    "photo_credit": "© Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "Ma Rainey",
+    "location": "",
+    "coords": [-84.9877, 32.461],
+    "info": "Gertrude \"Ma\" (Pridgett) Rainey (1886-1939) was a blues singer who bridged vaudeville and southern blues music. Called the \"Mother of the Blues,\" she performed in Black minstrel shows as a teenager, but elevated her status as a very influential singer who created very powerful vocal stylings that inspired other Black women singers after her. ",
+    "img": "ma rainey.jpg",
+    "audio": "Ma Rainey - Moonshine Blues (1923).mp3",
+    "photo_credit": "© Paramount Records/Public Domain"
+  },
+  {
+    "name": "TLC",
+    "location": "",
+    "coords": [-84.388, 33.749],
+    "info": "One of the best-selling American girl groups of all time (T-Boz, Left Eye, and Chili), they formed in 1990 to record a very successful debut album, Ooooooohhh... On the TLC Tip, that spawned hit singles such as \"Ain't 2 Proud to Beg\" and \"Baby-Baby-Baby.\" They also won a number of awards such as the Grammys, Soul Train, and American Music Awards over the course of their career. ",
+    "img": "tlc.jpg",
+    "audio": "TLC - Waterfalls (Official HD Video).mp3",
+    "photo_credit": "© Jeff Kravitz/FilmMagic via Getty Images"
+  },
+  {
+    "name": "Gladys Knight",
+    "location": "",
+    "coords": [-84.388, 33.749],
+    "info": "Born in 1944, Knight is an American singer who started in the music industry in a group with her brother and a couple cousins named Gladys Knight & the Pips whose songs include \"Midnight Train to Georgia\" (1973) and \"If I Were Your Woman\" (1967). Dubbed as the \"Empress of Soul,\" she later embarked a successful solo career with songs like \"Men\" (1991).",
+    "img": "gladys knight.jpg",
+    "audio": "Save The Overtime (For Me).mp3",
+    "photo_credit": "© David Redfern/Redferns via Getty Images"
+  },
+  {
+    "name": "Monica",
+    "location": "",
+    "coords": [-84.388, 33.749],
+    "info": "Arnold (b. 1980) is an American singer and songwriter started her music career at a young age with hits such as \"Don't Take It Personal (Just One of Dem Days\" (1995) and \"For You I Will\" (1997). She scored a number 1 hit on the Billboard Hot 100 chart with her duet with singer Brandy called \"The Boy Is Mine\" (1998). ",
+    "img": "monica.jpg",
+    "audio": "Monica - Angel Of Mine (Official Music Video).mp3",
+    "photo_credit": "© Tim Mosenfelder/Getty Images"
+  },
+  {
+    "name": "Mavis Staples",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Staples (b. 1939) is an American singer and civil rights activist who began her music career with her family, The Staples Singles, headed by her father with hits such as \"I'll Take You There\" (1972). In addition to performing with her family, she had a successful solo career winning five solo Grammy Awards and inducted into the Rock & Roll Hall of Fame in 1999. Musicians from different genres have collaborated with her over many decades due to her ability to blend gospel, blues, and R&B music. ",
+    "img": "mavis staples.jpg",
+    "audio": "A HOUSE IS NOT A HOME.mp3",
+    "photo_credit": "© Gilles Petard/Redferns via Getty Images"
+  },
+  {
+    "name": "Jennifer Hudson",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Hudson (b. 1981) is an singer, actress, producer, and talk show host. Unceremoniously booted off the singing competition, American Idol, she went on to have a musical career. She is one of the few Black women who has earned an EGOT status (Emmy, Grammy, Oscar, Tony).",
+    "img": "jennifer hudson.jpg",
+    "audio": "Jennifer Hudson - Spotlight.mp3",
+    "photo_credit": "© Frazer Harrison/Getty Images"
+  },
+  {
+    "name": "Mahalia Jackson",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Jackson (1911-1972) was an American gospel singer who were revered as one of the greatest vocalists of all time. She met with much success during a time when racial segregation was prevelant in the United States. Through her music/performances, she was a civil rights activist. ",
+    "img": "mahalia jackson.jpg",
+    "audio": "Mahalia Jackson - Take My Hand, Precious Lord (Official Audio).mp3",
+    "photo_credit": "© Express/Archive Photos/Getty Images"
+  },
+  {
+    "name": "Da Brat",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Born in 1974, Shawntae Harris-Dupart is an American rapper, songwriter, and actress who became the first solo female rapper who became a platinum-album artist. ",
+    "img": "da brat.jpg",
+    "audio": "Da Brat - Funkdafied (Official Video).mp3",
+    "photo_credit": "© Al Pereira/Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "Chaka Khan",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Yvette Stevens (b. 1953) is an American singer and songwriter who started as the lead for the R&B group called Rufus, but also had a very successful solo career with hits such as \"Tell Me Something Good\" (1974), \"Through the Fire,\" (1984), and \"I Feel for You (1984).\"",
+    "img": "chaka khan.jpg",
+    "audio": "Chaka Khan - I'm Every Woman (Official Music Video) [HD Remaster].mp3",
+    "photo_credit": "© Michael Putland/Getty Images"
+  },
+  {
+    "name": "Minnie Riperton",
+    "location": "",
+    "coords": [-87.6298, 41.8781],
+    "info": "Riperton (1947-1979) was an American singer and songwriter who began her career as a background singer to the like of Ramsey Lewis, Muddy Waters, and Stevie Wonder before making a singing career for herself.With her ability to sing in high head voice, her first album, Come to My Garden (1970), was critically acclaimed decades after its release, but it wasn't until her second album, Perfect Angel (1974), where she achieved commercial sucess. ",
+    "img": "minnie ripperton.jpg",
+    "audio": "Lovin' You.mp3",
+    "photo_credit": "© Harry Langdon/Getty Images"
+  },
+  {
+    "name": "Janet Jackson",
+    "location": "",
+    "coords": [-87.3464, 41.5934],
+    "info": "Jackson (b. 1966) is an American singer, songwriter, dancer, and actress. Even though she spent most of her childhood in Los Angeles, she was born in Gary and moved with her family when her brothers (The Jackson 5) became a popular music group at Motown Records. She became a very successful solo artist when her third album, Control, was released in 1986. This album spawned a series of hit songs and was able to break away from the confines of the \"family business.\" ",
+    "img": "janet jackson.jpg",
+    "audio": "Janet Jackson - Nasty (1986).mp3",
+    "photo_credit": "© Eddie Malluk/WireImage via Getty Images"
+  },
+  {
+    "name": "Tracie Spencer",
+    "location": "",
+    "coords": [-92.3426, 42.4928],
+    "info": "Spencer (b. 1976) is an American singer and songwriter. She started singing at a very young age which lead her to win the junior vocalist prize on Star Search (a precursor to American Idol/The Voice) in 1987. She signed  and recorded her self-titled album soonafter at the age of 12. During the course of her career, she also modeled for various brands and made an apperance on the hit TV show Family Matters.  ",
+    "img": "tracie spencer.jpg",
+    "audio": "Tracie Spencer - Tender Kisses.mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Janelle Monáe",
+    "location": "",
+    "coords": [-94.6275, 39.1141],
+    "info": "Monáe (b. 1985) is an American singer, songwriter, actress, and entrepreneur. She began performing around town which included local community theatre. Relocated to Atlanta, she honed her skills as a performer by recording her music independently. Then, she became more successful in her recording career by releasing several albums such as The Electric Lady (2013). Her acting career includes movies such as Hidden Figures and Moonlight, both released in 2016. ",
+    "img": "janelle monae.jpg",
+    "audio": "Tightrope.mp3",
+    "photo_credit": "© Dimitrios Kambouris/Getty Images"
+  },
+  {
+    "name": "Helen Humes",
+    "location": "",
+    "coords": [-85.7585, 38.2527],
+    "info": "Humes (1913-1981) was an American singer. Growing up singing in church as well as receiving private lessons led her to a longtime music career. She performed with legendary bandleader Count Basie as well as recorded several albums. While she was widely-known for singing jazz, she also performed other genres of music such as blues and R&B.  ",
+    "img": "helen humes.jpg",
+    "audio": "OLDIES 1950 OCT 21 MILLION DOLLAR SECRET-Helen Humes.mp3",
+    "photo_credit": "© Jan Persson/Redferns via Getty Images"
+  },
+  {
+    "name": "Irma Thomas",
+    "location": "",
+    "coords": [-90.4409, 30.4396],
+    "info": "Called \"The Soul Queen of New Orleans,\" Thomas (b. 1941) is an American singer. Raised singing in the church, she began to record with local record labels, but eventually record music with producer(and NOLA native) Allen Toussaint. She relocated to California to continue her music career, but she returned to the NOLA area to continue her musical journey. ",
+    "img": "irma thomas.jpg",
+    "audio": "You Can Have My Husband, But Please Don't Mess With My Man.mp3",
+    "photo_credit": "© Erika Goldring/Getty Images"
+  },
+  {
+    "name": "Big Freedia",
+    "location": "",
+    "coords": [-90.0715, 29.9511],
+    "info": "Born in 1978, Big Freedia is an American singer, rapper, and performer who is an ambassador in bounce music, energetic, high-tempo subgenre of hip-hop that originated in New Orleans' housing projects in the late 1980s. Known for her very active live performances, she has collaborated with the likes of Beyonce, Lizzo, and Drake for his number one song, \"Nice For What\" which is heavily influenced by bounce music.  ",
+    "img": "big freedia.jpg",
+    "audio": "Big Freedia - Make It Jingle.mp3",
+    "photo_credit": "© Gary Miller/FilmMagic via Getty Images"
+  },
+  {
+    "name": "Leidisi",
+    "location": "",
+    "coords": [-90.0715, 29.9511],
+    "info": "Born in 1972, Ledisi Anibade Young is a singer, songwriter, and record music producer who has captivated audiences with her soulful and smooth voice. Known for her entepreneurial spirit, she released her music on independent labels started by her. She released 7 albums on a major label, Verve/Verve Forecast. But, she returned to releasing music on an independent label with her eighth album, The Wild Card (2020). She was nominated for a Best New Artist Grammy Award in 2007.",
+    "img": "leidisi.jpg",
+    "audio": "Ledisi - In the Morning  Alright.mp3",
+    "photo_credit": "© Paras Griffin/Getty Images"
+  },
+  {
+    "name": "Billie Holiday",
+    "location": "",
+    "coords": [-76.6122, 39.2904],
+    "info": "Born Eleanora Fagan (1915-1959), Holiday was an American jazz and swing singer. Called \"Lady Day,\" she was known for her pop sensibilities and improvisational skills. Famously for performing the transformative song \"Strange Fruit,\" (1939), she used this song to address rampant racism in America during the Jim Crow era. ",
+    "img": "billie holiday.jpg",
+    "audio": "1941 HITS ARCHIVE_ God Bless The Child - Billie Holiday.mp3",
+    "photo_credit": "© William P. Gottlieb/Library of Congress/Public Domain"
+  },
+  {
+    "name": "Toni Braxton",
+    "location": "",
+    "coords": [-76.6975, 39.1318],
+    "info": "Braxton (b. 1967) is an American singer, songwriter, and actress who rose to fame in the early 1990s with hits \"Love Shoulda Brought You Home\" (1992), \"Breathe Again (1994), \"He Wasn't Man Enough\" (2000). As the eldest of six sibilings, she originally recorded with her sisters, but producers L.A. Reid and Babyface saw something special in Braxton and steered their efforts in her recording career. ",
+    "img": "toni braxton.jpg",
+    "audio": "Toni Braxton - Un-Break My Heart Live HQ.mp3",
+    "photo_credit": "© Jeff Kravitz/FilmMagic via Getty Images"
+  },
+  {
+    "name": "Donna Summer",
+    "location": "",
+    "coords": [-71.0589, 42.3601],
+    "info": "Born LaDonna Adrian Gaines (1947-2012), Summer was an American singer and songwriter who started her musical journey at an early age when she led a local rock band before moving to Germany to participate in a musical called Hair. She met an Italian and a British producer who helped her launch her recording career with hits such as \"Love to Lover You Baby\" (1975), \"Hot Stuff\" (1979), and \"She Works Hard for the Money\" (1983). With a string of hits during the 1970s, she was know as the \"Queen of Disco.\"  ",
+    "img": "donna summer.jpg",
+    "audio": "Bad Girls (12 Version).mp3",
+    "photo_credit": "© Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "Aretha Franklin",
+    "location": "",
+    "coords": [-83.0458, 42.3314],
+    "info": "Crowned the \"Queen of Soul,\" Franklin (1942-2018) was an American singer, songwriter, and pianist who created the blueprint for the voice of a generation. Growing up in her father's church, she used her singing prowess to move the audience. She used that same skill to move audiences in the secular world with songs such as \"Respect\" (1967) and \"Think\" (1968). She was the first woman inducted into the Rock & Roll Hall of Fame in 1987. ",
+    "img": "aretha franklin.jpg",
+    "audio": "[You Make Me Feel Like] A Natural Woman.mp3",
+    "photo_credit": "© Atlantic Records/Public Domain"
+  },
+  {
+    "name": "The Supremes",
+    "location": "",
+    "coords": [-83.0458, 42.3314],
+    "info": "Originally called the Primettes, Diana Ross, Mary Wilson, and Florence Ballard was one of the most successful girl groups of all time (1959-1970). Discovered by Motown founder Berry Gordy from the projects of Detroit, they recorded hits like, \"Where Did Our Love Go,\" (1964), \"You Keep Me Hangin On,\" (1967), and \"Someday, We Will Be Together\" (1969).",
+    "img": "the supremes.jpg",
+    "audio": "The Supremes - Stop! In The Name Of Love Official Music Video.mp3",
+    "photo_credit": "© Motown Records/Public Domain"
+  },
+  {
+    "name": "Anita Baker",
+    "location": "",
+    "coords": [-83.0458, 42.3314],
+    "info": "Born in Toledo in 1958 but grew up in Detroit, Baker is an American singer of jazz and R&B music who is know for her soulful sounds. Recognized by her contralto voice, she was a premier artist for a subgenre of a radio format called the quiet storm. Her songs included \"Give You the Best That I Got\" (1988), \"Been So Long,\" (1986), and \"Fairy Tales\" (1990). ",
+    "img": "anita baker.jpg",
+    "audio": "Anita Baker_ Sweet Love..mp3",
+    "photo_credit": "© Rob Verhorst/Redferns via Getty Images"
+  },
+  {
+    "name": "Aaliyah",
+    "location": "",
+    "coords": [-83.0458, 42.3314],
+    "info": "Aaliyah Dana Haughton (1979-2001) was an American singer, actress, and model who started her singer at a very young age appearing on the talent competition, Star Search. Her debut album, Age Ain't Nothing But a Number (1994) spawned hits such as \"Back and Forth\" (1994) and \"At Your Best (You Are Love)\" (1994). She later collaborated with Missy Elloitt and Timbaland for her second album, One in a Million (1996). She also starred in Romeo Must Die (1999) and Queen of the Damned (2002). ",
+    "img": "aaliyah.jpg",
+    "audio": "Aaliyah -Try Again (Original Video).mp3",
+    "photo_credit": "© Jeff Kravitz/FilmMagic via Getty Images"
+  },
+  {
+    "name": "Cassandra Wilson",
+    "location": "",
+    "coords": [-90.1848, 32.2988],
+    "info": "Wilson (b. 1955) is a jazz singer and songwriter who incorporates other genres in her musical repertoire. As a young child, she took classical lessons through school concerts and marching bands. After moving around with music groups in New York City, she went solo. With her unique voice, she won numerous awards including a Grammy. ",
+    "img": "cassandra wilson.jpg",
+    "audio": "You Don't Know What Love Is.mp3",
+    "photo_credit": "© Roberto Serra/Iguana Press/Getty Images"
+  },
+  {
+    "name": "Denise LaSalle",
+    "location": "",
+    "coords": [-90.2081, 33.4057],
+    "info": "Ora Denise Alllen (1934-2018) was an American blues, R&B, and soul singer - songwriter who grew up singing in local church choirs. She recorded music in Chicago for Chess Records and Tennessee for Malaco Records with an array of modest hits throughout her career. ",
+    "img": "denise lasalle.jpg",
+    "audio": "Denise LaSalle - Don't Mess With My Toot Toot (1985).mp3",
+    "photo_credit": "© Mark van den Brink/Redferns via Getty Images"
+  },
+  {
+    "name": "Leontye Price",
+    "location": "",
+    "coords": [-89.1306, 31.6941],
+    "info": "Price (b. 1927) is a soprano who became the first Black singer maintaining a long association with the Metropolitan Opera in New York City. Born to musical parents (mother, a singer; father, a tuba player), she honed her piano and voice skills with a local music teacher. After stints at Wilberforce University and Julliard School. She led a successful career with performances in Porgy and Bess, Aida, and with orchestras around the world. ",
+    "img": "leontyne price.jpg",
+    "audio": "Tosca 1955 English (Leontyne Price, Poleri, Wheeler - Adler) Abridged.mp3",
+    "photo_credit": "© Metropolitan Opera/Public Domain"
+  },
+  {
+    "name": "Dorothy Moore",
+    "location": "",
+    "coords": [-90.1848, 32.2988],
+    "info": "Moore, born in 1946, is a American blues, gospel, and R&B singer whose father was a member of the Five Blind Boys of Mississippi. Singing in the church at a young age, Moore continued her career while attending Jackson State University. After recording for several local record labels, she scored an R&B hit, \"Misty Blue\" in 1976, charting at number #2 on the Billboard R&B chart and number #3 on the Billboard Hot 100. She continues to be involve in the music community in various capacities. ",
+    "img": "dororthy moore.jpg",
+    "audio": "Dorothy Moore - Misty Blue (Lyric Video).mp3",
+    "photo_credit": "© Malaco Records/Public Domain"
+  },
+  {
+    "name": "Tina Turner",
+    "location": "",
+    "coords": [-90.1994, 38.627],
+    "info": "Annie Mae Bullock (1939-2023) was a singer, actress, author, and actress who was called the \"Queen of Rock 'n' Roll\" because of her powerful singing voice and stage presence. Even though she was born in Nutbush (Brownsville) Tennessee, she spent her formative music career in St. Louis where she met her future husband, Ike Turner. That partnership started a decades-long music career as a duo and a solo artist. After escaping an abusive relationship with Ike, Turner scored a long list of chart toppers during the 1980s-2000s. ",
+    "img": "tina turner.jpg",
+    "audio": "What's Love Got To Do With It - Tina Turner 1984.mp3",
+    "photo_credit": "© Herb Ritts/Capitol Records via Getty Images"
+  },
+  {
+    "name": "Joséphine Baker",
+    "location": "",
+    "coords": [-90.1994, 38.627],
+    "info": "Freda Josephine Baker (1906-1975)  was a French dancer, singer, and actress who centered her career in Paris, France becoming one of the most celebrated performers in the country. She was most famous for her performance, the 1927 revue Un vent de folie caused a sensation in the city. Her costume, consisting only of a short skirt of artificial bananas and a beaded necklace, became an iconic image and a symbol both of the Jazz Age and the Roaring Twenties. ",
+    "img": "josephine bake.jpg",
+    "audio": "J'ai Deux Amours  (1930)  -  Joséphine BAKER  -  Lyrics & English Translation.mp3",
+    "photo_credit": "© Studio Harcourt/Public Domain"
+  },
+  {
+    "name": "702",
+    "location": "",
+    "coords": [-115.1398, 36.1716],
+    "info": "Named after the city's area code, this musical group consisted a couple of sisters and their former school classmate. Irish Grinstead, Misha Grinstead, and Meelah Williams scored a series of hit songs such as \"Steelo,\" (1996). Get It Together\" (1996) and their ode to girls empowerment, \"Where My Girls At?\" (1999) which was an international hit.",
+    "img": "702.jpg",
+    "audio": "702 - Where My Girls At (Official Music Video).mp3",
+    "photo_credit": "© Motown Records/Public Domain"
+  },
+  {
+    "name": "Nellie Brown Mitchell",
+    "location": "",
+    "coords": [-70.8737, 43.1979],
+    "info": "Mitchell (1845-1924) was an African-American concert singer and music educator who performed at prominent churches in the New England area. Before moving to Boston, she made music apperances in Massachusetts and New York City. In addition to being an musical artist, she formed her own concert company and became a educator in form of being a vocal teacher for Black women in the Boston area.",
+    "img": "nellie e. brown.jpg",
+    "audio": "one.mp3",
+    "photo_credit": "© Boston Public Library/Public Domain"
+  },
+  {
+    "name": "SZA",
+    "location": "",
+    "coords": [-74.2732, 40.7312],
+    "info": "Although Solána Imani Rowe (b. 1989) was born in St. Louis, Missouri, she grew up in New Jersey where she had a typical childhood, but she left school early to pursue a singing career. A chance meeting with a record executive, SZA, who is also a songwriter, released an EP while writing songs for other artists. Her breakthrough album, Ctrl (2017), spawned hits like \"Love Galore\" and \"The Weekend.\" It was her album, SOS (2022), that made her a household name. She has been a frequent collaborator with rapper Kendrick Lamar and recorded hits like \"All the Stars\" (2018) and \"Luther\" (2024). ",
+    "img": "sza.jpg",
+    "audio": "SZA - Kill Bill (Official Audio).mp3",
+    "photo_credit": "© Kevin Mazur/Getty Images"
+  },
+  {
+    "name": "Lauryn Hill",
+    "location": "",
+    "coords": [-74.2613, 40.7487],
+    "info": "Hill (b. 1975) is an American singer, rapper, and songwriter who was one of the original members of the hip-hop group, The Fugees. As a group, they scored numerous hit songs such as \"Killing Me Softly with His Song\" (1996). She went solo two years later with his debut album, The Miseducation of Lauryn Hill (1998). She won Album of the Year Grammy, making it the first hip hop album to do so. That same night, she won a total of 5 awards. ",
+    "img": "lauryn hill.jpg",
+    "audio": "Lost Ones.mp3",
+    "photo_credit": "© Frank Micelotta/Getty Images"
+  },
+  {
+    "name": "Queen Latifah",
+    "location": "",
+    "coords": [-74.1724, 40.7357],
+    "info": "Born Dana Owens (1970), she is a very successful rapper, singer, songwriter, and actor. She began her rap career at the young age of 17 with recording her first hit, \"Ladies First\" (1989) beginning her career-long crusade of uplifting women in her music. Her first album, All Hail the Queen, was a defining moment for Black women in hip hop music. She also has a fruitful career in acting starring in movies and television such as Beautyshop (2005), Set It Off (1996), and Living Single (1993-1998). In 2026, she was inducted into the Rock and Roll Hall of Fame as an early music influence. ",
+    "img": "queen latifah.jpg",
+    "audio": "Queen Latifah - Ladies First (feat. Monie Love) [Music Video].mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Whitney Houston",
+    "location": "",
+    "coords": [-74.1724, 40.7357],
+    "info": "Houston (1963-2012) was an American singer, actress, and record/movie producer. She rose to musical fame during the 1980s with her powerful vocal styling with hits such \"You Give Good Love\" (), \"I Wanna Dance With Somebody\" (), and \"I'm Your Baby Tonight\" (). While she began her career as a model, she was discovered by music exec Clive Davis who debut her on the Merv Griffin Show. She also starred in movies such as Rodgers and Hammerstein's Cinderella (1997), The Bodyguard (1992), and Waiting to Exhale (1995).",
+    "img": "whitney houston.jpg",
+    "audio": "Whitney Houston Radio City Hall 93_ I will Always Love You.mp3",
+    "photo_credit": "© Dave Hogan/Getty Images"
+  },
+  {
+    "name": "Sarah Vaughan",
+    "location": "",
+    "coords": [-74.1724, 40.7357],
+    "info": "Known as the \"Queen of Bebop, Vaughan (1924-1990) was an American jazz singer and pianist whose voice is known taking an operatic tone in singing jazz standards. Her voice has been often compared to opera singer Leontyne Price, but her voice ranges from soprano to baritone. She was also known to hold her own in performing with men jazz greats such as Billy Eckstein and Mel Tormé. ",
+    "img": "sarah vaughn.jpg",
+    "audio": "Misty (1958) - Sarah Vaughan.mp3",
+    "photo_credit": "© William P. Gottlieb/Library of Congress/Public Domain"
+  },
+  {
+    "name": "Hazel Scott",
+    "location": "",
+    "coords": [-73.9465, 40.8116],
+    "info": "Even though Scott (1920-1981) was born in Trinidad, she grew up in New York City. A singer and pianist, Scott was also a pioneer in music and activist against racial discrimination. She was a prominent entertainer  performing on television and film at the same time as Black women like Lena Horne. Scott has been recognized as the first Black person to host her own network TV series She was famously known for the scene in the movie, The Heat's On (1943), where she plays two pianos at once. ",
+    "img": "hazel scott.jpg",
+    "audio": "Round Midnight.mp3",
+    "photo_credit": "© Gjon Mili/The LIFE Picture Collection via Getty Images"
+  },
+  {
+    "name": "Lena Horne",
+    "location": "",
+    "coords": [-73.9414, 40.6836],
+    "info": "Horne (1917-2010) was a singer, actress, dancer, and civil rights activist. Raised by her grandparents when her father and mother were not there to take care of her, she started performing as a chorus girl in the Harlem clubs as a teenager. She transitioned into Hollywood by starring in movies such as Stormy Weather and Cabin in the Sky in the same year, 1943. She used her celebrity status to advocate for social justice and to bring attention to the inequalities in different social spaces such as the armed forces. ",
+    "img": "lena horne.jpg",
+    "audio": "Lena Horne - Stormy Weather (1943).mp3",
+    "photo_credit": "© MGM/Public Domain"
+  },
+  {
+    "name": "Mariah Carey",
+    "location": "",
+    "coords": [-73.135, 40.7891],
+    "info": "Born in 1969, Carey is a singer, songwriter, and record producer who has a five-octave range. She honed her skills as a performer working as a demo singer and eventually moved to New York City where she started to sing back up for singer Brenda K. Starr. This opportunity lead to a very successful career in music where she is second (to The Beatles) as having the most number one hits (19) on the Billboard Hot 100 chart. ",
+    "img": "mariah carey.jpg",
+    "audio": "Mariah Carey - Fantasy (Remix - Official 4K Video) ft. O.D.B..mp3",
+    "photo_credit": "© Kevin Mazur/Getty Images"
+  },
+  {
+    "name": "Mary J. Blige",
+    "location": "",
+    "coords": [-73.8648, 40.8448],
+    "info": "Blige (b. 1971) is a singer, songwriter, actress, and entrepreneur who is well-known for hits such as \"Real Love\" (1992), \"Not Gon' Cry\" (1996), and \"Family Affair\" (2001). Crowned the \"Queen of Hip Hop Soul,\" she was discovered at a young age singing at a local mall and recorded her first album, \"What's the 411?\" (1992) soon after. Since then, Blige has provided soulful sounds for a generation for women and girls. She was inducted into the Rock & Roll Hall of Fame in 2024. ",
+    "img": "mary j. blige.jpg",
+    "audio": "Mary J. Blige - Be Without You (Official Music Video).mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Lil' Kim",
+    "location": "",
+    "coords": [-73.9414, 40.6836],
+    "info": "Kimberly Jones (b. 1974) is a rapper and songwriter who rose to fame in the 1990s with songs such as \"No Time\" (1996) and \"Crush on You\" (1996). In spite of having a troubled childhood/teenage years, she honed her skills as a rapper performing freestyle raps around the neighboorhood. Being discovered and mentored by the Notorious B.I.G, she signed her first record deal and her debut album, Hard Core, debuted in 1996. As the self-proclaimed \"Queen Bee,\" she was one of the first female rappers who was not afraid to show her sexuality as evidence based on Hard Core's album cover. ",
+    "img": "lil kim.jpg",
+    "audio": "Crush on You.mp3",
+    "photo_credit": "© Al Pereira/Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "The Ronettes ",
+    "location": "",
+    "coords": [-73.9394, 40.8416],
+    "info": "The Ronettes was an American girl group who comprised of Veronica Bennett, her older sister Estelle Bennett, and their cousin Nedra Talley. Inspired by Frankie Lyman & the Teenagers, they decided to form their own group and performed at various venues including the famed Apollo Theater. After meeting music producer Phil Spector, the Ronettes recorded a series of hits such as \"Be My Baby,\" (1963) and \"Walking in the Rain\" (1964).  ",
+    "img": "the ronettes.jpg",
+    "audio": "NEW  Be My Baby - The Ronettes 1963 Color Stereo.mp3",
+    "photo_credit": "© Michael Ochs Archives/Getty Images"
+  },
+  {
+    "name": "Samara Joy",
+    "location": "",
+    "coords": [-73.8648, 40.8448],
+    "info": "Born in 1999 in a musical family, Samara Joy McLendon is an American jazz singer who honed her vocal skills while in college. After she was discovered at a singing competition, Joy recorded her first album in 2021. Two years later, she won the Best New Artist and Best Jazz Vocal Album Grammys in 2023. ",
+    "img": "samara joy.jpg",
+    "audio": "Samara Joy - Can't Get Out Of This Mood (Audio).mp3",
+    "photo_credit": "© Lester Cohen/Getty Images"
+  },
+  {
+    "name": "Cardi B",
+    "location": "",
+    "coords": [-73.9394, 40.8416],
+    "info": "Belcalis Marlenis Almánzar (b.1992) , a apper known for her outspoken lyrics and energetic flow. Her first studio album, Invasion of Privacy (2018), debuted atop the Billboard 200 with the largest female rap album streaming week of all time and making Cardi B the first solo female artist to win the Grammy award in the Best Rap Album category.",
+    "img": "cardi b.jpg",
+    "audio": "Cardi B - Bodak Yellow  Lyrics.mp3",
+    "photo_credit": "© Nicholas Hunt/Getty Images"
+  },
+  {
+    "name": "Nina Simone",
+    "location": "",
+    "coords": [-82.2343, 35.2087],
+    "info": "Born Eunice Kathleen Waymon (1933-2003), Simone was a singer, songwriter, pianist, and civil rights activist who was one of the most recognizable voices in jazz music. As a child prodigy playing the piano, she keenly aware of racism in her hometown and during her journey honing her skills at school. Called the \"High Priestess of Soul,\" her contralto voice sparked emotive lyrics in her songs. She was a leading force in the Civil Rights Movement with songs like \"Mississippi Goddam\" (1964) and \"Young, Gifted, and Black\" (1969). ",
+    "img": "nina simone.jpg",
+    "audio": "Four Women - Nina Simone 1965.mp3",
+    "photo_credit": "© David Redfern/Redferns via Getty Images"
+  },
+  {
+    "name": "Rapsody",
+    "location": "",
+    "coords": [-77.6741, 35.4538],
+    "info": "Marlanna Evans (b. 1983) Is an American rapper whose career started at North Carolina State University when she was discovered by fellow North Carolinian music producer 9th Wonder.After releasing several mixtapes, she released her debut album, Laila's Wisdom, in 2016. She won a Grammy years later for the song \"3 AM\" (2024) for Best Melodic Rap Performance. ",
+    "img": "rapsody.jpg",
+    "audio": "You Should Know.mp3",
+    "photo_credit": "© Bennett Raglin/Getty Images"
+  },
+  {
+    "name": "Roberta Flack",
+    "location": "",
+    "coords": [-82.3212, 35.6179],
+    "info": "Flack (1937-2025) was an American singer, songwriter, and pianist who electricifying audiences with her soulful ballads that defined the quiet storm radio format. She was known for her chart hits with her partner in song, Donny Hathway (1945-1979) such as \"Where Is the Love?\" (1972). She was the first artist to win consecutive Record of the Year Grammys - \"The First Time I Ever Saw Your Face\" (1972) and \"Killing Me Softly with His Song\" (1972). ",
+    "img": "roberta flack.jpg",
+    "audio": "Roberta Flack - Killing Me Softly With His Song (Official Video).mp3",
+    "photo_credit": "© Atlantic Records/Public Domain"
+  },
+  {
+    "name": "Rhiannon Giddens",
+    "location": "",
+    "coords": [-79.792, 36.0726],
+    "info": "Born in 1977, Giddens is an singer, songwriter, and multi-instrumentalist whose musical journey started as a founding member of the string band Carolina Chocolate Drops. She then embarked a solo career by releasing her debut album titled, Tomorrow Is My Turn (2015). Since then, she has performed all over the world with different artists highlighting her diversity in Americana music. She has won a MacArthur Grant and a Pulitzer Prize in Music. Her activism includes advocating the intersection between the racial history and American music. ",
+    "img": "rhiannon giddens.jpg",
+    "audio": "Rhiannon Giddens - She's Got You.mp3",
+    "photo_credit": "© Jason Kempin/Getty Images"
+  },
+  {
+    "name": "Elizabeth Cotten",
+    "location": "",
+    "coords": [-79.0558, 35.9132],
+    "info": "Cotton (1893-1987) was an folk and blues musician who taught herself as a left-handed to play a right-handed guitar,  marking a signature style called \"Cotton picking.\" She had to quit school at a young age to help the family and abandoned playing the guitar/recording for years until she was in her 60s. That is when she was discovered by the folk-singing Seeger family. She performed and recorded music well into her 80s. Her album, Folksongs and Instrumentals with Guitar (1958), was placed into the National Recording Registry by the Library of Congress. ",
+    "img": "elizabeth cotten.jpg",
+    "audio": "Freight Train Elizabeth Cotton.mp3",
+    "photo_credit": "© Smithsonian Folkways/Public Domain"
+  },
+  {
+    "name": "Shirley Caesar",
+    "location": "",
+    "coords": [-78.8986, 35.994],
+    "info": "Affectionately known as \"The First Lady of Gospel,\" Caesar-Williams (b.1938) has uplifting audiences with her inspiring music for decades. Starting singing among friends and family, she joined in 1958 The Caravans, a popular gospel group at the age 19. Since then, she has been a pillar in the gospel music community.  ",
+    "img": "shirley caesar.jpg",
+    "audio": "Jesus, I Love Calling Your Name.mp3",
+    "photo_credit": "© Paras Griffin/Getty Images"
+  },
+  {
+    "name": "Tracy Chapman",
+    "location": "",
+    "coords": [-81.6944, 41.4993],
+    "info": "Chapman (b. 1964) is an American singer and songwriter who started playing at an early age playing the ukulele and the guitar. While at college, she was a street performer and recorded demos. After being discovered by a fellow college student, Chapman was signed to a major label and recorded her self-titled debut album, Tracy Chapman (1988). Her song from that album, \"Fast Car\" (1988),  became her signature hit. Nearly 35 years later, she became the the first Black woman to score a country number one with a solo composition and the the first Black woman or Black songwriter to ever win a CMA Award, winning Song of the Year when country music artist Luke Combs covered the song. ",
+    "img": "tracy chapman.jpg",
+    "audio": "Tracy Chapman - Fast Car  [Wembley 1988].mp3",
+    "photo_credit": "© Kevork Djansezian/Getty Images"
+  },
+  {
+    "name": "Nancy Wilson",
+    "location": "",
+    "coords": [-82.9824, 39.3331],
+    "info": "Wilson (1937-2018) was an American singer who performed blues, jazz, R&B, pop, and soul over a span of 5 decades and was an actress who starred in television and film. She performed locally in church choirs and talent shows. She was discovered by jazz artist Cannonball Adderley when he was at a local Columbus club and suggested that she moved to New York City to pursue a music career. Wilson quickly received her big break at a New York club and signed to Capitol Records in 1960. This was the beginning of a storied career in entertainment until her retirement in the early 2010s. ",
+    "img": "nancy wilson.jpg",
+    "audio": "Nancy Wilson - (You Don't Know) How Glad I Am  Official Video  Dolby Remastered  1964.mp3",
+    "photo_credit": "© Capitol Records/Public Domain"
+  },
+  {
+    "name": "Mamie Smith",
+    "location": "",
+    "coords": [-84.512, 39.1031],
+    "info": "Smith (1891-1946) was an American singer who started as a vaudeville artist and eventually performing blues and jazz. One of the pioneers of blues music, Smith was one of the first Black artists who recorded vocal recordings. She grew up performing with different acts, but struck out on her own by recording music for the label, Okeh Records. Billed as the \"Queen of the Blues,\" Smith's \"Crazy Blues\" (1920) has been called the first recorded blues song. ",
+    "img": "mamie smith.jpg",
+    "audio": "Mamie Smith - Crazy Blues (1920).mp3",
+    "photo_credit": "© Okeh Records/Public Domain"
+  },
+  {
+    "name": "Shirley Murdock",
+    "location": "",
+    "coords": [-83.5379, 41.6528],
+    "info": "Born in 1957, Murdock is a singer and songwriter who had hit songs such as \"As We Lay\" 1985) and \"Go On Without You\" (1985). Early on, she sang in the church before she was asked by musician and producer Roger Troutman who asked her to sing background vocals on songs such as \"Computer Love\" (1986) and \"I Wanna Be Your Man\" (1987). ",
+    "img": "shirley murdock.jpg",
+    "audio": "As We Lay.mp3",
+    "photo_credit": "© Elektra Records/Public Domain"
+  },
+  {
+    "name": "Tierra Whack",
+    "location": "",
+    "coords": [-75.1652, 39.9526],
+    "info": "Whack (b. 1995) is a rapper and singer who used writing/rhythming as a way to deal with insecurities as a young child. After receiving positive feedback from her work, she decided that she wanted to pursue a music career. That move led to a record deal and make music that includes mixtapes and albums such as Whack World (2018) and World Wide Whack (2024).",
+    "img": "tierra whack.jpg",
+    "audio": "Tierra Whack - MUMBO JUMBO.mp3",
+    "photo_credit": "© Arturo Holmes/Getty Images"
+  },
+  {
+    "name": "Patti LaBelle",
+    "location": "",
+    "coords": [-75.1652, 39.9526],
+    "info": "LaBelle (b. 1944) is an American singer and actress who has been entertaining audiences for many decades with her powerhouse vocals and electric performances on stage and screen. Starting with Patti LaBelle and The Bluebelles (later LaBelle), she had hit songs such as \"Lady Marmalade\" (1974). Named the \"Godmother of Soul,\" she embarked on a solo career in the early 1980s with  a stirring redition of \"Somewhere Over the Rainbow\" (1981) and hits such as \"New Attitude\" (1984) and \"On Our Own\" (1986), a duet with singer Michael McDonald. After 60 years in the business, she is still performing today. ",
+    "img": "patti labelle.jpg",
+    "audio": "Patti LaBelle - If Only You Knew (Audio).mp3",
+    "photo_credit": "© Bobby Bank/WireImage via Getty Images"
+  },
+  {
+    "name": "Phyllis Hyman",
+    "location": "",
+    "coords": [-75.1652, 39.9526],
+    "info": "Hyman (1949-1995) was an American singer, songwriter, and actress who was known for her contalto voice. Music training at a school, she joined various music groups before she was discovered by a music promoter. She honed her skills serving as a background vocalist before she recorded a string of solo hits \"You Don't Know How to Love Me\" (1979) and \"Living All Alone\" (1986).",
+    "img": "phyllis hyman.jpg",
+    "audio": "Phyllis Hyman - Old Friend (Official Audio).mp3",
+    "photo_credit": "© Rob Verhorst/Redferns via Getty Images"
+  },
+  {
+    "name": "Jill Scott",
+    "location": "",
+    "coords": [-75.1652, 39.9526],
+    "info": "Scott (b. 1972) is a singer, poet, songwriter, and actress who originally wanted to become a teacher, but changed her career trajectory to start a career in the arts. She began her career as a spoken word artist who collaborated with The Roots on their Grammy Award-winning hit \"You Got Me\" (1999). Her music career spanned almost 25 years starting with her debut album, Who Is Jill Scott?: Words and Sounds Vol. 1, in 2000.",
+    "img": "jill scott.jpg",
+    "audio": "A Long Walk - Jill Scott (2000).mp3",
+    "photo_credit": "© Frank Micelotta/ImageDirect via Getty Images"
+  },
+  {
+    "name": "Jazmine Sullivan",
+    "location": "",
+    "coords": [-75.1652, 39.9526],
+    "info": "Born in 1987, Sullivan is a singer and songwriter who went to the Philadelphia High School for the Performing Arts as a vocal major and she began her singing career in both children's and adult choir. After a record deal fell through, she was signed to another label and recorded her debut album, Fearless\" (2008) with the assistance of Missy Elliott as one of the producers that featured the single, \"Need U Bad\" (2008). She has won 2 Grammys among other music awards throughout her career. ",
+    "img": "jazmine sullivan.jpg",
+    "audio": "Jazmine Sullivan - Bust Your Windows.mp3",
+    "photo_credit": "© Paras Griffin/Getty Images"
+  },
+  {
+    "name": "Mary Lou Williams",
+    "location": "",
+    "coords": [-79.9959, 40.4406],
+    "info": "Although jazz pianist, arranger, and composer Williams (1910-1981) was born in Atlanta, Georgia, she spent her formative years in Pittsburgh. A child pianist prodigy at a very young age, she turned professional at the age of 15. Working the jazz club circuit, she performed with jazz legends such as Dizzy Gillespie, Duke Ellington, and Benny Goodman. She was only three of the women who appeared in the iconic photo, A Great Day in Harlem, in 1958.",
+    "img": "mary lou williams.jpg",
+    "audio": "Mary's Idea.mp3",
+    "photo_credit": "© William P. Gottlieb/Library of Congress/Public Domain"
+  },
+  {
+    "name": "Sissieretta Jones",
+    "location": "",
+    "coords": [-71.4128, 41.824],
+    "info": "Maltida Sissieretta Joyner Jones (1868/1969-1933) was a American opera singer. Also known as \"The Black Patti,\" she was born in Portsmouth, Virginia, but she grew up in Providence, Rhode Island. She started singing at a young age in the church and had formal training at the different music academies. She performed all over the world including singing for four different U.S. Presidents and created a musical and acrobatic act called Black Patti Troubadours.",
+    "img": "Sissieretta Jones.jpg",
+    "audio": "La Traviata_ Act I_ Sempre libera.mp3",
+    "photo_credit": "© Library of Congress/Public Domain"
+  },
+  {
+    "name": "Linda Martell (need an image); order from Getty Images",
+    "location": "",
+    "coords": [-81.5151, 33.9213],
+    "info": "Born Thelma Bynem in 1941, she became the first commercially successful Black female artist in country music and the first to play at the Grand Ole Opry. As a teenager, she performed around her hometown with her family. She went solo and recorded music in Nashville for years. But retreated back to South Carolina after not having much success. ",
+    "img": "linda martell.jpg",
+    "audio": "The Winstons - Color Him Father 1969.mp3",
+    "photo_credit": "© Record World/Public Domain"
+  },
+  {
+    "name": "Angie Stone",
+    "location": "",
+    "coords": [-81.0348, 34.0007],
+    "info": "Stone (1961-2025) was an singer, songwriter, rapper, producer, and rapper. Getting her start singing in the church, she transitioned to rap music to form a group with childhood friends and had a hit record titled \"Funk You Up\" (1979). Years later, she began a solo career after a stint with an R&B group, Vertical Hold. She release several albums including Black Diamond (1999) and Mahogany Soul (2001), both certified gold by the Recording Industry Association of America (RIAA). ",
+    "img": "angie stone.jpg",
+    "audio": "Angie Stone No More Rain.mp3",
+    "photo_credit": "© Kevin Winter/Getty Images"
+  },
+  {
+    "name": "Bessie Smith",
+    "location": "",
+    "coords": [-85.3097, 35.0456],
+    "info": "Smith (1892-1937) was a blues singer who was coined the \"Empress of the Blues.\" She performed on the streets with her siblings to earn a living because her parents died when she was a young child. After connecting with Mamie Smith, she began recording music for Columbia Records in the 1920s. Her music includes themes of independence, fearlessness, and sexual freedom.",
+    "img": "bessie smith.jpg",
+    "audio": "Bessie Smith - Down Hearted Blues (Audio).mp3",
+    "photo_credit": "© Carl Van Vechten/Library of Congress/Public Domain"
+  },
+  {
+    "name": "Eartha Kitt",
+    "location": "",
+    "coords": [-81.1018, 33.6163],
+    "info": "Kitt (1927-2008) was a truly renaissance artist (singer, dancer, songwriter, actress, comedian, and actress) where she captivated audiences during her illustrious career as a bonafide entertainer. She recorded unforgetable hit songs such as \"C'est si bon\" (1953) and \"Just an Old Fashioned Girl\" (1956). But, she is most well-known for the Christmas classic, \"Santa Baby\" (1953).",
+    "img": "eartha kitt.jpg",
+    "audio": "1953 HITS ARCHIVE_ Santa Baby - Eartha Kitt.mp3",
+    "photo_credit": "© Silver Screen Collection/Getty Images"
+  },
+  {
+    "name": "GloRilla",
+    "location": "",
+    "coords": [-90.049, 35.1495],
+    "info": "Gloria Woods (b. 1999) is an American rapper who started performing as a teenager honing her MC skills when she lost her voice singing while in the  church children's choir. After making the decision to pursue a rap career and known for Southern hip hop, she released several mixtapes before her debut album, Glorious, in 2024. It spawn the hit single, \"TGIF\" (2024) and her album peaked at number 5 on the Hot Billboard 200. She won Best New Hip-Hop Artist at the 2022 BET Hip Hop Awards.",
+    "img": "GloRilla.jpg",
+    "audio": "GloRilla - TGIF (Official Audio).mp3",
+    "photo_credit": "© Paras Griffin/Getty Images"
+  },
+  {
+    "name": "Gangsta Boo",
+    "location": "",
+    "coords": [-90.049, 35.1495],
+    "info": "Lola Chantrelle Mitchell (1979 –2023) was an American rapper who was part of Three Six Mafia, a Southern hip hop group as a teenager. After being in the group for six albums, she left the group to go solo and recorded 3 albums and various mixtapes. ",
+    "img": "gangsta boo.jpg",
+    "audio": "Gangsta Boo - Where Dem Dollas At.mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "The Shindellas",
+    "location": "",
+    "coords": [-86.7816, 36.1627],
+    "info": "Officially formed in 2017, this girl group is composed of Tamara Chauniece, Stacy Johnson and Kasi Jones. Their song, \"Last Night Was Good for My Soul,” reached the top 10 on Billboard’s Adult R&B Airplay chart.",
+    "img": "the shindellas.jpg",
+    "audio": "The Shindellas - Last Night Was Good for My Soul (Official Music Video).mp3",
+    "photo_credit": "© Erika Goldring/Getty Images"
+  },
+  {
+    "name": "Beyoncé",
+    "location": "",
+    "coords": [-95.3698, 29.7604],
+    "info": "Knowles-Carter (b. 1981) is an American singer, songwriter, producer, and actress. The most-awarded Grammy winner of all time, her success began as a member of the girl group, Destiny's Child. After going solo in 2003, she released her debut album, Dangerously in Love the same year. This began a very lucrative career in the music with 8 solo studio albums selling over 200 million worldwide. ",
+    "img": "beyonce.jpg",
+    "audio": "Beyoncé - Crazy In Love ft. JAY Z.mp3",
+    "photo_credit": "© Kevin Mazur/WireImage via Getty Images"
+  },
+  {
+    "name": "Megan Thee Stallion",
+    "location": "",
+    "coords": [-95.3698, 29.7604],
+    "info": "Megan Pete (b. 1995) is an American rapper and songwriter whose unapologetic lyrics about women empowerment sexuality has garnered a huge fan base. One of her earlier songs, \"Hot Girl Summer,\" (2019) made it into the popular culture zeitgeist, but it was \"Savage\" (2020) that catapulted her into a huge music success. ",
+    "img": "megan thee stallion.jpg",
+    "audio": "Megan Thee Stallion - Savage [Official Audio].mp3",
+    "photo_credit": "© Kevin Mazur/Getty Images"
+  },
+  {
+    "name": "Yolanda Adams",
+    "location": "",
+    "coords": [-95.3698, 29.7604],
+    "info": "Born in 1961, Adams is an American gospel singer who started her career performing in her hometown church as the lead vocalist of the choir. She since then has become one the premier gospel artists (e.g., BeBe & CeCe Winans, Mary Mary) whose music has been recognized in the secular world with songs such as \"Open Your Heart\" (2000). Her album, Mountain High...Valley Low (2000), won a Grammy and sold 2x platinum total. ",
+    "img": "yolanda adams.jpg",
+    "audio": "Open My Heart.mp3",
+    "photo_credit": "© Paras Griffin/Getty Images"
+  },
+  {
+    "name": "Lizzo",
+    "location": "",
+    "coords": [-95.3698, 29.7604],
+    "info": "Although she was born in Detroit and raised in Houston, Melissa Jefferson (b. 1988) is an American singer, rapper, and songwriter (and flutist) who music inspires body positivity and women empowerment. After almost of a decade of honing her skills in performing in Minneapolis, she received her big break with the song, \"Truth Hurts\" (2017) and the release of her major label debut album, Cuz I Love You (2019).",
+    "img": "lizzo.jpg",
+    "audio": "Lizzo - Juice (Official Video).mp3",
+    "photo_credit": "© Kevin Mazur/Getty Images"
+  },
+  {
+    "name": "Erykah Badu",
+    "location": "",
+    "coords": [-96.797, 32.7767],
+    "info": "Born Erica Wright in 1971, she is an American singer, rapper, songwriter, and record producer who has mesmerized audiences for decades with her soulful musical delivery since her debut album, Baduizm (1997) with hits such as \"On & On\" and \"Next Lifetime.\" She was one of the artists who marked a new era of Black music called \"neo-soul movement.\"",
+    "img": "erykah badu.jpg",
+    "audio": "Erykah Badu - Bag Lady.mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Mickey Guyton",
+    "location": "",
+    "coords": [-97.1081, 32.7357],
+    "info": "Guyton (b. 1983) is an American country artist. She started performing as a young child at her local church and  was an original member of the 2000s girl group, 3LW. Moving from Los Angeles to Nashville, Guyton became part of the country community where she recorded several mixtapes and albums before her song, \"Black Like Me,\" (2020) from her debut album, Remember Her Name (2020) gained recognition. In the same year, she became the first Black woman to perform at the Academy of Country Music Awards. ",
+    "img": "mickey guyton.jpg",
+    "audio": "Mickey Guyton - Black Like Me.mp3",
+    "photo_credit": "© Jason Kempin/Getty Images"
+  },
+  {
+    "name": "Ella Fitzgerald",
+    "location": "",
+    "coords": [-76.473, 37.0871],
+    "info": "Fitzgerald (1917-1996) was an American improvisational vocal musician, singer, songwriter and composer who was known as \"First Lady of Song.\" Famously known for singing a style called scatting, a few of her recordings were her interpretations of the Great American Songbook (1956) such as \"Anything Goes\" (1956) and \"I Get a Kick Out of You\" (1956). She also performed songs through television and film appearances St. Louis Blues (1958) and The Ed Sullivan Show (1948-1971). Fitzgerald became the first African-American woman to win at the first Grammy show.",
+    "img": "ella fitzgerald.jpg",
+    "audio": "Ella Fitzgerald A-Tisket-A-Tasket.mp3",
+    "photo_credit": "© Carl Van Vechten/Library of Congress/Public Domain"
+  },
+  {
+    "name": "Missy Elliott",
+    "location": "",
+    "coords": [-76.2983, 36.8354],
+    "info": "Elliott (b. 1971) is an American rapper, singer, songwriter, and record producer who created innovative musical sounds and videos that defined an era. Either with her producing partner Timbaland or on her own, she produced a series of hits for artists like Aaliyah, 702, Ciara, and herself. Her discography sold over 40 million albums and garnered numerous awards including four Grammys. She became the first solo female rapper inducted into the Rock & Roll Hall of Fame. ",
+    "img": "missy elliott.jpg",
+    "audio": "The Rain - Supa Dupa Fly.mp3",
+    "photo_credit": "© Jeff Kravitz/FilmMagic via Getty Images"
+  },
+  {
+    "name": "Oleta Adams",
+    "location": "",
+    "coords": [-120.5059, 46.6021],
+    "info": "Born in 1953, Adams is a singer, songwriter, and pianist who scored a Top 5 hit in both the United States and United Kingdom with the song, \"Get Here\" (1991) from her third album, Circle of One, (1990). To date, she has released 9 albums that covers in both R&B and gospel. ",
+    "img": "oleta adams.jpg",
+    "audio": "Get Here.mp3",
+    "photo_credit": "© Raymond Boyd/Getty Images"
+  },
+  {
+    "name": "Ethel Caffie-Austin (need an image)",
+    "location": "",
+    "coords": [-81.2223, 37.2698],
+    "info": "Caffie-Austin (1949-2024) was a gospel artist (singer, pianist) who was known as the \"First Lady of West Virginia Gospel Music.\" In addition to teaching music to a local prison, she founded the Ethel Caffie-Austin Singers where they performed at different venues worldwide.",
+    "img": "ETHEL.jpg",
+    "audio": "Ytmp3.gg_YouTube_I-m-on-the-Battlefield-for-My-Lord_Media_2kBPVa6fH_A_008_128k.mp3",
+    "photo_credit": "© West Virginia Folklife Program/Public Domain"
+  },
+  {
+    "name": "SistaStrings",
+    "location": "",
+    "coords": [-87.9065, 43.0389],
+    "info": "Chauntee (violin) and Monique (cello) Ross combines their classical background with R&B with a touch of gospel influence. Formed in 2014, the sisters, who came from the church, use their music to promote diversity through outreach and representation. ",
+    "img": "sistastrings.jpg",
+    "audio": "SistaStrings - Goodbye - SistaStrings (128k).mp3",
+    "photo_credit": "© Erika Goldring/Getty Images"
+  },
+  {
+    "name": "Tanner Adell",
+    "location": "",
+    "coords": [-111.0003, 42.9052],
+    "info": "Although Adell (b. 1996) was born in Lexington, KY and moved to California, she spent her formative years developing her musical craft in Wyoming learning how to play the piano, violin and string bass and the guitar. She then moved to Nashville to record her debut country album, Buckle Bunny (2023). A year later, she was a featured artist on Beyonce's Cowboy Carter in 2024. ",
+    "img": "tanner adell.jpg",
+    "audio": "Tanner Adell - Buckle Bunny (Official Audio) - Tanner Adell (128k).mp3",
+    "photo_credit": "© Jason Kempin/Getty Images"
+  }
+];
+
+// Helper function to match coordinates to the nearest city
+function findMatchingCity(coords) {
+  return cities.find(city => 
+    Math.abs(city.coords[0] - coords[0]) < 1.0 && 
+    Math.abs(city.coords[1] - coords[1]) < 1.0
+  );
+}
+
+// Helper to sanitize city names into valid CSS class identifiers
+function sanitizeClassName(str) {
+  return str.replace(/[^a-zA-Z0-9\-_]/g, '-');
+}
+
+d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(us => {
+  const states = topojson.feature(us, us.objects.states);
+
+  // Render US States
+  svg.selectAll("path")
+    .data(states.features)
+    .enter()
+    .append("path")
+    .attr("d", path)
+    .attr("fill", "#E6C7E8")
+    .attr("stroke", "Black");
+
+  // Render City Label Groups (Background rect + Text slightly right of point)
+  const cityGroups = svg.selectAll(".city-label-group")
+    .data(cities)
+    .enter()
+    .append("g")
+    .attr("class", d => `city-label-group city-${sanitizeClassName(d.name)}`)
+    .attr("transform", d => {
+      const p = projection(d.coords);
+      if (!p) return "translate(-9999,-9999)";
+      // Shift x right by 10px, shift y slightly centered vertically
+      return `translate(${p[0] - 45}, ${p[1] - 23})`;
+    });
+
+  // White Background Box
+  cityGroups.append("rect")
+    .attr("class", "city-label-bg");
+
+  // Smaller Text Label
+  cityGroups.append("text")
+    .attr("class", "city-label-text")
+    .attr("x", 4)
+    .attr("y", 10)
+    .text(d => d.name);
+
+  // Dynamically size background rectangle around the text width/height
+  cityGroups.each(function() {
+    const group = d3.select(this);
+    const textNode = group.select("text").node();
+    if (textNode) {
+      const bbox = textNode.getBBox();
+      group.select("rect")
+        .attr("x", bbox.x - 4)
+        .attr("y", bbox.y - 2)
+        .attr("width", bbox.width + 8)
+        .attr("height", bbox.height + 4);
+    }
+  });
+
+  // Render Artist Point Circles
+  svg.selectAll("circle")
+    .data(points)
+    .enter()
+    .append("circle")
+    .attr("cx", d => {
+      const p = projection(d.coords);
+      return p ? p[0] : -9999;
+    })
+    .attr("cy", d => {
+      const p = projection(d.coords);
+      return p ? p[1] : -9999;
+    })
+    .attr("r", 4)
+    .attr("fill", "#996515")
+    .style("cursor", "pointer")
+    .on("click", function(event, d) {
+        event.stopPropagation(); // Stop click from propagating to map background
+
+        const matchingCity = findMatchingCity(d.coords);
+
+        // If clicking the currently active artist point, toggle off (hide)
+        if (activeArtist === d.name) {
+            tooltip.style("opacity", 0);
+            activeArtist = null;
+
+            // Hide city label group
+            if (matchingCity) {
+                d3.select(`.city-${sanitizeClassName(matchingCity.name)}`)
+                  .style("opacity", 0);
+            }
+
+            // Reset circle style
+            d3.select(this)
+              .attr("r", 4)
+              .attr("fill", "#996515")
+              .attr("stroke", "none");
+            return;
+        }
+
+        activeArtist = d.name;
+
+        // Hide all other city label groups
+        d3.selectAll(".city-label-group").style("opacity", 0);
+
+        // Reveal matching city label group
+        if (matchingCity) {
+            d3.select(`.city-${sanitizeClassName(matchingCity.name)}`)
+              .style("opacity", 1);
+        }
+
+        // Populate Popup Content
+        const content = `
+          <strong style="color:#7a1712">${d.name}</strong><br>
+          <strong>${d.location}</strong><br>
+          ${d.info}
+          <img src="${d.img}" alt="${d.name}">
+          <div style="font-size:11px; color:#666; font-style:italic; margin-top:4px; margin-bottom:10px;">
+              ${d.photo_credit}
+          </div>
+          <div>
+            <button onclick="playAudio('${d.audio}')">▶ Play</button>
+            <button onclick="pauseAudio()">⏸ Pause</button>
+          </div>
+        `;
+
+        tooltip
+          .html(content)
+          .style("opacity", 1)
+          .style("left", (event.pageX + 10) + "px")
+          .style("top", (event.pageY - 20) + "px");
+
+        // Reset all circle styles
+        svg.selectAll("circle")
+          .attr("r", 4)
+          .attr("fill", "#996515")
+          .attr("stroke", "none");
+
+        // Highlight selected point
+        d3.select(this)
+          .attr("r", 6)
+          .attr("fill", "gold")
+          .attr("stroke", "#ffffff")
+          .attr("stroke-width", 2);
+    });
+
+  // Clear Popup and City Labels when clicking on the map background
+  svg.on("click", function() {
+      tooltip.style("opacity", 0);
+      activeArtist = null;
+
+      // Hide all city label groups
+      d3.selectAll(".city-label-group").style("opacity", 0);
+
+      // Reset circle styles
+      svg.selectAll("circle")
+        .attr("r", 4)
+        .attr("fill", "#996515")
+        .attr("stroke", "none");
+  });
+});
+</script>
+
+</body>
+</html>
