@@ -413,7 +413,7 @@ const points = [
   },
   {
     "name": "Victoria  Monét",
-    "location": "Sacramento, California",
+    "location": "",
     "coords": [-121.4944, 38.5816],
     "info": " Monét (b. 1989) is a singer, songwriter, and dancer who compose songs for other artists like Ariana Grande before making a mark for herself with the hit single, \"On My Mama\" (2023) and won a Grammy for Best New Artist in 2024. ",
     "img": "victoria monet.jpg",
@@ -1373,8 +1373,8 @@ const points = [
 // Helper function to match coordinates to the nearest city
 function findMatchingCity(coords) {
   return cities.find(city => 
-    Math.abs(city.coords[0] - coords[0]) < 1.0 && 
-    Math.abs(city.coords[1] - coords[1]) < 1.0
+    Math.abs(city.coords[0] - coords[0]) < .0001 && 
+    Math.abs(city.coords[1] - coords[1]) < .0001
   );
 }
 
